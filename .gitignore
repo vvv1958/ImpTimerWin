@@ -1,1 +1,36 @@
 
+# Исключение системных файлов
+Thumbs.db
+Desktop.ini
+
+# Файлы конфигурации IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.bak
+*.swp
+*.obj
+*.pch
+*.idb
+*.pdb
+*.ilk
+
+# Скомпилированные бинарные файлы
+bin/
+obj/
+*.exe
+*.dll
+*.lib
+
+# Папки отладки
+Debug/
+Release/
