@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Интервальный Таймер</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .timer-container {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        #timer-display {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            transition: 0.3s all;
+        }
+        #time {
+            font-size: 72px;
+            font-weight: bold;
+            margin: 15px 0;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: 0.3s;
+            min-width: 100px;
+        }
+        .settings {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin: 15px 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+        input {
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .global-progress {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .time-counters {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            font-size: 18px;
+            color: #666;
+        }
+        .warmup { background: #fff3cd; color: #856404; }
+        .work { background: #f8d7da; color: #721c24; }
+        .rest { background: #d4edda; color: #155724; }
+        .cooldown { background: #cce5ff; color: #004085; }
+        #startBtn { background: #4CAF50; color: white; }
+        #pauseBtn { background: #ff9800; color: white; display: none; }
+        #stopBtn { background: #f44336; color: white; }
+    </style>
+</head>
+<body>
+    <div class="timer-container">
+        <h1 style="text-align: center; margin-bottom: 30px;">Интервальный Таймер</h1>
+        
+        <div id="timer-display" class="warmup">
+            <div id="phase-name">Готово</div>
+            <div id="time">00:00</div>
+            <div class="progress-bar">
+                <div class="progress"></div>
+            </div>
+        </div>
+
+        <div class="global-progress">
+            <div class="progress-bar">
+                <div class="progress"></div>
+            </div>
+            <div class="time-counters">
+                <span id="elapsed">Прошло: 0:00:00</span>
+                <span id="remaining">Осталось: 0:00:00</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" onclick="startTimer()">Старт</button>
+            <button id="pauseBtn" onclick="pauseTimer()">Пауза</button>
+            <button id="stopBtn" onclick="stopTimer()">Стоп</button>
+        </div>
+    </div>
+
+    <div class="settings">
+        <div class="input-group">
+            <label>Разминка (сек):</label>
+            <input type="number" id="warmup" value="5" min="0">
+        </div>
+        <div class="input-group">
+            <label>Работа (сек):</label>
+            <input type="number" id="work" value="5" min="1">
+        </div>
+        <div class="input-group">
+            <label>Отдых (сек):</label>
+            <input type="number" id="rest" value="5" min="1">
+        </div>
+        <div class="input-group">
+            <label>Повторов:</label>
+            <input type="number" id="rounds" value="2" min="1">
+        </div>
+        <div class="input-group">
+            <label>Заминка (сек):</label>
+            <input type="number" id="cooldown" value="5" min="0">
+        </div>
+    </div>
+
+    <script>
+        let audioContextAllowed = false;
+        
+        class SoundGenerator {
+            constructor() {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            playStart() {
+                this.playSound(600, 0.5, 'sine');
+            }
+
+            playPhaseChange() {
+                this.playSound(800, 0.3, 'square');
+            }
+
+            playCountdown() {
+                this.playSound(1200, 0.1, 'sawtooth');
+            }
+
+            playFinish() {
+                this.playSound(400, 1.5, 'sine');
+            }
+
+            playSound(freq, duration, type) {
+                if(!audioContextAllowed) return;
+                
+                try {
+                    const oscillator = this.audioContext.createOscillator();
+                    const gainNode = this.audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.audioContext.destination);
+
+                    oscillator.type = type;
+                    oscillator.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+                    
+                    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+
+                    oscillator.start();
+                    oscillator.stop(this.audioContext.currentTime + duration);
+                } catch(e) {
+                    console.log('Audio error:', e);
+                }
+            }
+        }
+
+        document.body.addEventListener('click', () => {
+            if(!audioContextAllowed) {
+                audioContextAllowed = true;
+            }
+        });
+
+        const sound = new SoundGenerator();
+        let isRunning = false;
+        let currentPhase = 'warmup';
+        let currentRound = 1;
+        let startTime;
+        let totalDuration = 0;
+        let animationFrame;
+
+        function updateDisplay(time, phaseName, className) {
+            document.getElementById('time').textContent = time;
+            document.getElementById('phase-name').textContent = phaseName;
+            document.getElementById('timer-display').className = className;
+        }
+
+        function updateGlobalTime() {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const remaining = totalDuration - elapsed;
+
+            document.getElementById('elapsed').textContent = 
+                `Прошло: ${formatFullTime(elapsed)}`;
+            document.getElementById('remaining').textContent = 
+                `Осталось: ${formatFullTime(remaining > 0 ? remaining : 0)}`;
+
+            const progress = (elapsed / totalDuration) * 100;
+            document.querySelector('.global-progress .progress').style.width = `${Math.min(progress, 100)}%`;
+        }
+
+        function formatFullTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            if(isRunning) return;
+            isRunning = true;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('pauseBtn').style.display = 'inline';
+
+            const times = getCurrentSettings();
+            totalDuration = calculateTotalDuration(times);
+            
+            currentPhase = 'warmup';
+            currentRound = 1;
+            startTime = Date.now();
+            
+            runPhase('warmup', times.warmup, 'Разминка', 'warmup');
+            sound.playStart();
+        }
+
+        function runPhase(phase, duration, name, className) {
+            if(!isRunning || duration <= 0) return handlePhaseEnd(phase);
+
+            const phaseStart = Date.now();
+            updateDisplay(formatTime(duration/1000), name, className);
+            let lastSecond = -1;
+
+            function tick() {
+                if(!isRunning) return;
+
+                const now = Date.now();
+                const elapsed = now - phaseStart;
+                const remaining = duration - elapsed;
+
+                updateGlobalTime();
+
+                if(remaining <= 0) {
+                    handlePhaseEnd(phase);
+                    return;
+                }
+
+                updateDisplay(formatTime(remaining/1000), name, className);
+
+                const currentSecond = Math.ceil(remaining/1000);
+                if(currentSecond <= 3 && currentSecond !== lastSecond) {
+                    sound.playCountdown();
+                    lastSecond = currentSecond;
+                }
+
+                animationFrame = requestAnimationFrame(tick);
+            }
+
+            animationFrame = requestAnimationFrame(tick);
+        }
+
+        function handlePhaseEnd(phase) {
+            const times = getCurrentSettings();
+
+            switch(phase) {
+                case 'warmup':
+                    if(times.work > 0) {
+                        currentRound = 1;
+                        sound.playPhaseChange();
+                        runPhase('work', times.work, `Работа ${currentRound}/${times.rounds}`, 'work');
+                    } else {
+                        handlePhaseEnd('work');
+                    }
+                    break;
+                
+                case 'work':
+                    if(times.rest > 0) {
+                        sound.playPhaseChange();
+                        runPhase('rest', times.rest, `Отдых ${currentRound}/${times.rounds}`, 'rest');
+                    } else {
+                        currentRound++;
+                        if(currentRound > times.rounds) {
+                            handlePhaseEnd('cooldown');
+                        } else {
+                            handlePhaseEnd('work');
+                        }
+                    }
+                    break;
+                
+                case 'rest':
+                    currentRound++;
+                    if(currentRound > times.rounds) {
+                        if(times.cooldown > 0) {
+                            sound.playPhaseChange();
+                            runPhase('cooldown', times.cooldown, 'Заминка', 'cooldown');
+                        } else {
+                            stopTimer();
+                            sound.playFinish();
+                        }
+                    } else {
+                        sound.playPhaseChange();
+                        runPhase('work', times.work, `Работа ${currentRound}/${times.rounds}`, 'work');
+                    }
+                    break;
+                
+                case 'cooldown':
+                    stopTimer();
+                    sound.playFinish();
+                    break;
+            }
+        }
+
+        function pauseTimer() {
+            isRunning = false;
+            document.getElementById('startBtn').style.display = 'inline';
+            document.getElementById('pauseBtn').style.display = 'none';
+            cancelAnimationFrame(animationFrame);
+        }
+
+        function stopTimer() {
+            isRunning = false;
+            currentPhase = 'warmup';
+            currentRound = 1;
+            updateDisplay('00:00', 'Готово', 'warmup');
+            document.querySelectorAll('.progress').forEach(p => p.style.width = '0%');
+            document.getElementById('elapsed').textContent = 'Прошло: 0:00:00';
+            document.getElementById('remaining').textContent = 'Осталось: 0:00:00';
+            document.getElementById('startBtn').style.display = 'inline';
+            document.getElementById('pauseBtn').style.display = 'none';
+            cancelAnimationFrame(animationFrame);
+        }
+
+        function getCurrentSettings() {
+            return {
+                warmup: document.getElementById('warmup').value * 1000,
+                work: document.getElementById('work').value * 1000,
+                rest: document.getElementById('rest').value * 1000,
+                rounds: parseInt(document.getElementById('rounds').value),
+                cooldown: document.getElementById('cooldown').value * 1000
+            };
+        }
+
+        function calculateTotalDuration(settings) {
+            return settings.warmup + 
+                 (settings.work + settings.rest) * settings.rounds + 
+                 settings.cooldown;
+        }
+
+        document.querySelectorAll('input').forEach(input => {
+            input.value = localStorage.getItem(input.id) || input.value;
+            input.addEventListener('input', () => {
+                localStorage.setItem(input.id, input.value);
+                if(input.id === 'rounds') input.value = Math.max(1, input.value);
+            });
+        });
+    </script>
+</body>
+</html>
